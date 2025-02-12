@@ -108,46 +108,90 @@ class Feudal:
                 activation_fn=tf.nn.relu,
                 scope="%s/conv_embFlat" % name)
 #------------------------------------------------------------------------------------------------------
+# 深度學習影像處理函數:適用於 CNN (卷積神經網路)，並針對空間特徵 (spatial features) 和非空間特徵 (non-spatial features) 進行處理。
+        #-----------------------------------------------------------------------------------------------------
+        # 功能： 兩層 卷積層 (Conv2D)，用來提取輸入影像的特徵
         def input_conv(x, name):
+            ## x：輸入影像 (可能是 NHWC 或 NCHW 格式)
+            ## name：用來給這層命名，方便之後識別
+
+            # 第一層卷積 (5x5 Kernel, 16 個通道)
+            ## 作用： 這一層會對輸入影像執行 5x5 的卷積，輸出 16 個特徵圖，並使用 ReLU 讓結果非線性化。
             conv1 = conv2d(
-                x, 16,
-                kernel_size=5,
-                stride=1,
-                padding='SAME',
-                activation_fn=tf.nn.relu,
-                data_format=data_format,
-                scope="%s/conv1" % name)
+                x, 16,  # 16 個輸出通道 (Filters)
+                kernel_size=5,  # 卷積核大小為 5x5
+                stride=1,  # 步長 = 1 (不縮小影像大小)
+                padding='SAME',  # 保持輸出大小不變
+                activation_fn=tf.nn.relu,  # ReLU 激活函數
+                data_format=data_format,  # 資料格式 (NHWC 或 NCHW)
+                scope="%s/conv1" % name)  # 命名這層為 "name/conv1"
+
+            # 第二層卷積 (3x3 Kernel, 32 個通道)
+            ## 這一層使用 3x3 卷積，讓特徵圖從 16 通道變成 32 通道，進一步提取影像特徵
             conv2 = conv2d(
-                conv1, 32,
-                kernel_size=3,
-                stride=1,
-                padding='SAME',
-                activation_fn=tf.nn.relu,
-                data_format=data_format,
-                scope="%s/conv2" % name)
-            return conv2
+                conv1, 32,  # 32 個輸出通道
+                kernel_size=3,  # 卷積核大小為 3x3
+                stride=1,  # 步長 = 1
+                padding='SAME',  # 保持輸出大小不變
+                activation_fn=tf.nn.relu,  # ReLU 激活函數
+                data_format=data_format,  # 資料格式
+                scope="%s/conv2" % name)  # 命名這層為 "name/conv2"
+            return conv2   # 返回經過兩層卷積處理的影像特徵圖
 
+        #-----------------------------------------------------------------------------------------------------
+        # 功能： 產生 非空間輸出 (Non-Spatial Output)，通常適用於分類問題
         def non_spatial_output(x, channels, name):
+            ## x：輸入特徵向量 (通常是全連接層的輸出)
+            ## channels：輸出的維度 (通常等於分類數量)
+            ## name：名稱
+
+            ## 全連接層 (Fully Connected Layer)
+            ### 這裡使用一個 全連接層 (FC Layer)，將輸入 x 轉換成 channels 維的向量，但 不使用激活函數，讓原始 logits 直接輸出
             logits = fully_connected(x, channels, activation_fn=None, scope="non_spatial_output/flat/{}".format(name))
+            ### 這裡應用 Softmax 函數，將 logits 轉換為機率分佈，適用於分類問題
             return tf.nn.softmax(logits)
 
-        def spatial_output(x, name):
+        #-----------------------------------------------------------------------------------------------------
+        # 功能： 產生 空間輸出 (Spatial Output)，通常用於像素級分類 (如語意分割、對應策略圖等)
+        ## x：輸入的影像特徵圖
+        ## name：名稱
+       def spatial_output(x, name):
+
+            # 這裡使用 1x1 卷積，將輸入 x 降維為單通道輸出 (代表每個像素的分數)
             logits = conv2d(x, 1, kernel_size=1, stride=1, activation_fn=None, data_format=data_format, scope="spatial_output/conv/{}".format(name))
+
+            # 格式轉換與展平
+            ## to_nhwc(logits)：確保輸出是 NHWC 格式
+            ## flatten(logits)：將影像展平成向量，方便計算機率
             logits = flatten(to_nhwc(logits), scope="spatial_output/flat/{}".format(name))
+
+            # 應用 Softmax，將結果轉換為機率分佈，適合用來判斷每個像素的分類
             return tf.nn.softmax(logits)
 
+        #-----------------------------------------------------------------------------------------------------
+        # 功能： 在 通道 (Channel) 維度上合併多個 2D 特徵圖
+        ## lst：要合併的特徵圖列表
         def concat2DAlongChannel(lst):
             """Concat along the channel axis"""
+            # 選擇合併的軸:若 data_format == 'NCHW'，則通道軸是第 1 維，若 data_format == 'NHWC'，則通道軸是第 3 維
             axis = 1 if data_format == 'NCHW' else 3
+            # 合併特徵圖:將多個特徵圖沿著通道軸合併，形成一個更豐富的特徵表示
             return tf.concat(lst, axis=axis)
-
+        #-----------------------------------------------------------------------------------------------------
+        # 功能： 將 1D 向量展開成 2D 影像大小，用來廣播 非空間特徵 到整個影像區域
+        ## flat：1D 特徵向量
+        ## size2d：影像的 (高度, 寬度)
         def broadcast_along_channels(flat, size2d):
+
+            # 展開維度:先 增加兩個維度 (expand_dims)，再透過 tile 複製特徵向量到整個 2D 空間。
             if data_format == 'NCHW':
                 return tf.tile(tf.expand_dims(tf.expand_dims(flat, 2), 3),
                                tf.stack([1, 1, size2d[0], size2d[1]]))
             return tf.tile(tf.expand_dims(tf.expand_dims(flat, 1), 2),
                            tf.stack([1, size2d[0], size2d[1], 1]))
-
+        #-----------------------------------------------------------------------------------------------------
+        # 功能： 格式轉換 (NHWC ↔ NCHW)
+        ## NCHW → NHWC：將 (batch, channels, height, width) 轉換為 (batch, height, width, channels)
         def to_nhwc(map2d):
             if data_format == 'NCHW':
                 return tf.transpose(map2d, [0, 2, 3, 1])
