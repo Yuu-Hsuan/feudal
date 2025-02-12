@@ -41,15 +41,15 @@ class Feudal:
     """Feudal Networks network implementation based on https://arxiv.org/pdf/1703.01161.pdf"""
 
     def __init__(self, sess, ob_space, nbatch, nsteps, d, k, c, reuse=False, data_format='NCHW'):
-        # sess：TensorFlow 會話 (session)。
-        # ob_space：觀察空間 (包含 screen、minimap、flat 等)。
-        # nbatch：批次大小。
-        # nsteps：時間步長。
-        # d：管理層 (manager) 的目標向量維度。
-        # k：特徵提取的維度。
-        # c：通道數。
-        # reuse：是否重用變數。
-        # data_format：數據格式 (NCHW 或 NHWC)，但目前僅支援 NHWC。
+        # sess：TensorFlow 會話 (session)，用來執行計算圖 (graph)
+        # ob_space：觀察空間 (包含 screen、minimap、flat 等)。代表環境提供的數據（遊戲畫面、地圖資訊等）。
+        # nbatch：批次大小。每個訓練步驟處理的樣本數
+        # nsteps：時間步長。表示模型一次訓練會看多少個時間點的數據
+        # d：管理層 (manager) 的目標向量維度。高層管理者的隱藏層維度。
+        # k：特徵提取的維度。工人的隱藏層維度。
+        # c：通道數。管理者的記憶儲存大小（決定能記住多少步的資訊）
+        # reuse：是否重用變數。是否重複使用模型（在測試時可用）
+        # data_format：數據格式 (NCHW 或 NHWC)，但目前僅支援 NHWC。資料格式，NCHW（批次、通道、高度、寬度）或 NHWC（批次、高度、寬度、通道）。
         # BUG: does not work with NCHW yet.
         if data_format=='NCHW':
             print('WARNING! NCHW not yet implemented for ConvLSTM. Switching to NHWC')
@@ -58,10 +58,21 @@ class Feudal:
 # 觀察特徵嵌入 (Embedding)
         def embed_obs(x, spec, embed_fn, name):
             # embed_obs：處理 screen、minimap 和 flat 特徵，將類別型特徵 (categorical) 轉換為 One-hot，將數值型特徵 (scalar) 取對數
+
+            # 根據 spec（特徵規格）來分割 x（輸入資料），並沿著最後一個維度 (-1) 進行切分。例如：如果 x 有 3 個通道，那這行程式會把它拆成 3 個獨立的變數。
             feats = tf.split(x, len(spec), -1)
+            
             out_list = []
+
+            # 對每個特徵進行轉換，這行表示我們會 逐一處理每個特徵
             for s in spec:
                 f = feats[s.index]
+
+                # 處理類別特徵（Categorical Features）
+                ## s.scale 代表這個特徵有多少種可能的值（例如，假設是 256）
+                ## log2(s.scale) 計算出適當的編碼維度，例如 log2(256) = 8，這樣可以用 8 維向量來表示這個特徵
+                ## one_hot 把類別值轉換成 one-hot 編碼，例如：3 轉換成 [0, 0, 0, 1, 0, 0, 0, 0]
+                ## embed_fn 是一個神經網路層，它可以把 one-hot 向量壓縮成更小的維度
                 if s.type == features.FeatureType.CATEGORICAL:
                     dims = np.round(np.log2(s.scale)).astype(np.int32).item()
                     dims = max(dims, 1)
