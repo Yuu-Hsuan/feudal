@@ -144,7 +144,7 @@ class FeudalAgent():
         manager_value_loss = tf.reduce_mean(tf.square(R-train_model.value[0])) / 2
 ```
 
-*　‵worker_loss‵ 代表工人（worker）的損失，它依據 ‵log_probs‵ 來計算策略網路的效能
+* ‵worker_loss‵ 代表工人（worker）的損失，它依據 ‵log_probs‵ 來計算策略網路的效能
 
 ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/3.png)
 
