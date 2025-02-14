@@ -198,17 +198,22 @@ class FeudalAgent():
         # Define optimizer
         global_step = tf.Variable(0, trainable=False)
         learning_rate = tf.train.exponential_decay(learning_rate, global_step, 10000, 0.94)
+
+        # optimizer
         optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate, decay=0.99, epsilon=1e-5)
 
         if args.retrain_m:
             train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                      "model/manager")
+            # train_op
             train_op = layers.optimize_loss(loss=loss, global_step=global_step,
                 optimizer=optimizer, clip_gradients=max_gradient_norm, learning_rate=None, name="train_op", variables=train_vars)
         else:
+            # train_op
             train_op = layers.optimize_loss(loss=loss, global_step=global_step,
                 optimizer=optimizer, clip_gradients=max_gradient_norm, learning_rate=None, name="train_op")
-
+```
+```
         with tf.variable_scope('model', reuse=True):
             s_weights = tf.reduce_mean(tf.get_variable('manager/s/weights'))
             fully_con_m_weights = tf.reduce_mean(tf.get_variable('manager/fully_connected/weights'))
@@ -311,8 +316,10 @@ class FeudalAgent():
         self.save = save
         self.initial_state = step_model.initial_state
         self.get_global_step = get_global_step
-
-
+```
+## 計算動作對數機率
+* 這部分計算代理人選擇動作的機率，使用 `log_probs` 來計算對數機率
+```
 def compute_policy_entropy(available_actions, policy, actions):
     """Compute total policy entropy.
 
