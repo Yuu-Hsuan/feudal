@@ -124,7 +124,8 @@ class FeudalAgent():
 ## 計算損失函數
 * 計算 管理者（manager）的損失函數
 
-* ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/1.png)
+** ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/1.png)
+** ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/2.png)
 ```
         # define loss
         # - manager loss
@@ -136,6 +137,7 @@ class FeudalAgent():
 ```
 
 *　‵worker_loss‵ 代表工人（worker）的損失，它依據 ‵log_probs‵ 來計算策略網路的效能
+** ![image]()
 ```
         # - worker loss
         log_probs = compute_policy_log_probs(train_model.AV_ACTS, train_model.policy, ACTIONS)
