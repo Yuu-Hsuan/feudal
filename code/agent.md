@@ -1,31 +1,39 @@
 ## 匯入必要的函式庫
 
 ```
-import os
-import tensorflow as tf
-import numpy as np
-from tensorflow.contrib import layers
-from tensorflow.python import debug as tf_debug
-from tensorflow.python.debug.lib.debug_data import InconvertibleTensorProto
+import os  # 用來操作檔案與資料夾（如存檔）
+import tensorflow as tf  # 深度學習框架，用來建構神經網路模型
+import numpy as np  # 數值計算函式庫
+from tensorflow.contrib import layers  # TensorFlow 的高階層，用於定義神經網路層
+from tensorflow.python import debug as tf_debug  # TensorFlow 除錯工具
+from tensorflow.python.debug.lib.debug_data import InconvertibleTensorProto  
 
-from rl.common.pre_processing import get_input_channels
-from rl.common.util import compute_entropy, safe_log, safe_div, mask_unavailable_actions
+from rl.common.pre_processing import get_input_channels  # 從外部函式庫載入輸入資料的通道數
+from rl.common.util import compute_entropy, safe_log, safe_div, mask_unavailable_actions  # 與強化學習策略相關的函式
+```
 
+## `FeudalAgent` 類別的初始化
+
+* 這裡定義了一個 FeudalAgent 類別，它的初始化函式 `__init__()` 會接收：
+** `policy`：代理使用的策略網路（policy network）
+** `args`：包含超參數的設定值，如學習率（learning rate）、折扣因子等
+```
 class FeudalAgent():
 
     def __init__(self, policy, args):
 
-        value_loss_weight = args.value_loss_weight
-        entropy_weight = args.entropy_weight
-        learning_rate = args.lr
-        max_to_keep = args.max_to_keep
-        nenvs = args.envs
-        nsteps = args.steps_per_batch
-        res = args.res
-        checkpoint_path = args.ckpt_path
-        summary_writer = args.summary_writer
+        # 主要超參數
+        value_loss_weight = args.value_loss_weight  # 價值函數損失的權重
+        entropy_weight = args.entropy_weight  # 熵（entropy）損失的權重
+        learning_rate = args.lr  # 學習率
+        max_to_keep = args.max_to_keep   
+        nenvs = args.envs  # 環境數量
+        nsteps = args.steps_per_batch  # 每批次的步數
+        res = args.res  # 解析度
+        checkpoint_path = args.ckpt_path  # 存放模型的路徑
+        summary_writer = args.summary_writer  
         max_gradient_norm = 1.0
-        debug = args.debug
+        debug = args.debug  # 是否開啟除錯模式
 
         #TODO: check for correct format
         #TODO: rename those?
@@ -44,11 +52,13 @@ class FeudalAgent():
         print(f'# res = {res}')
         print(f'# checkpoint_path = {checkpoint_path}')
         print('######################\n')
-
-        tf.reset_default_graph()
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        sess = tf.Session(config=config)
+```
+## TensorFlow 會話（Session）設定
+```
+        tf.reset_default_graph()  # 重置 TensorFlow 計算圖，確保新建模型時不會有舊的計算圖干擾
+        config = tf.ConfigProto()  # 允許 TensorFlow 動態分配 GPU 記憶體
+        config.gpu_options.allow_growth = True   
+        sess = tf.Session(config=config)  # 建立 TensorFlow 會話（session），用來運行 TensorFlow 操作
 
         #if debug and debug_tb_adress:
         #    raise ValueError(
@@ -73,17 +83,30 @@ class FeudalAgent():
         #    sess = tf_debug.TensorBoardDebugWrapperSession(sess, debug_tb_adress)
 
         nbatch = nenvs*nsteps
+```
+## 定義神經網路的輸入格式
+```
         ch = get_input_channels()
+        
+        # ob_space 代表不同類型的輸入
         ob_space = {
-            'screen'  : [None, res, res, ch['screen']],
-            'minimap' : [None, res, res, ch['minimap']],
-            'flat'    : [None, ch['flat']],
-            'available_actions' : [None, ch['available_actions']]
+            'screen'  : [None, res, res, ch['screen']],  # 遊戲畫面資訊
+            'minimap' : [None, res, res, ch['minimap']],  # 小地圖資訊
+            'flat'    : [None, ch['flat']],  # 非影像型特徵
+            'available_actions' : [None, ch['available_actions']]  # 可執行的動作
         }
+```
 
+## 建立模型
+```
+        # step_model：用來進行一步推理（inference）
+        # train_model：用來訓練（train）
         step_model  = policy(sess, ob_space=ob_space, nbatch=nenvs, d=d, k=k, c=c, nsteps=1, reuse=None)
         train_model = policy(sess, ob_space=ob_space, nbatch=nbatch, d=d, k=k, c=c, nsteps=nsteps, reuse=True)
-
+```
+## 定義訓練所需的變數
+* 這些變數用來儲存模型的輸入與動作
+```
         # Define placeholders
         fn_id = tf.placeholder(tf.int32, [None], name='fn_id')
         arg_ids = {
@@ -97,7 +120,11 @@ class FeudalAgent():
         RI     = tf.placeholder(tf.float32, [None], name='returns_intrinsic')
         S_DIFF = tf.placeholder(tf.float32, [None,d], name='s_diff')
         #GOAL   = tf.placeholder(tf.float32, [None,d], name='goal')
-
+```
+## 計算損失函數
+* 計算 管理者（manager）的損失函數
+  
+```
         # define loss
         # - manager loss
         num = tf.reduce_sum(tf.multiply(S_DIFF,train_model.goal),axis=1)
@@ -105,11 +132,15 @@ class FeudalAgent():
         cos_similarity = safe_div(num, den, "manager_cos")
         manager_loss = -tf.reduce_mean(ADV_M * cos_similarity)
         manager_value_loss = tf.reduce_mean(tf.square(R-train_model.value[0])) / 2
+```
+
+*　‵worker_loss‵ 代表工人（worker）的損失，它依據 ‵log_probs‵ 來計算策略網路的效能
+```
         # - worker loss
         log_probs = compute_policy_log_probs(train_model.AV_ACTS, train_model.policy, ACTIONS)
         worker_loss = -tf.reduce_mean(ADV_W * log_probs)
         worker_value_loss = tf.reduce_mean(tf.square(RI-train_model.value[1])) / 2
-
+```
         entropy = compute_policy_entropy(train_model.AV_ACTS, train_model.policy, ACTIONS)
         loss = manager_loss \
              + worker_loss \
