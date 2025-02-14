@@ -144,9 +144,11 @@ class FeudalAgent():
         manager_value_loss = tf.reduce_mean(tf.square(R-train_model.value[0])) / 2
 ```
 
-* ‵worker_loss‵ 代表工人（worker）的損失，它依據 ‵log_probs‵ 來計算策略網路的效能
+* `worker_loss` 代表工人（worker）的損失，它依據 `log_probs` 來計算策略網路的效能
+
 
 ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/3.png)
+
 
 ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/5.png)
 
@@ -157,6 +159,22 @@ class FeudalAgent():
         worker_loss = -tf.reduce_mean(ADV_W * log_probs)
         worker_value_loss = tf.reduce_mean(tf.square(RI-train_model.value[1])) / 2
 ```
+* entropy
+
+
+![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/6.png)
+
+
+* loss：最終的總損失函數
+** manager_loss
+** worker_loss
+** value_loss_weight * manager_value_loss
+** value_loss_weight * worker_value_loss
+** 減去 entropy_weight * entropy（增加隨機性）
+
+![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/7.png)
+
+
 ```
         entropy = compute_policy_entropy(train_model.AV_ACTS, train_model.policy, ACTIONS)
         loss = manager_loss \
@@ -172,7 +190,11 @@ class FeudalAgent():
         print('worker_value_loss',worker_value_loss)
         print('entropy',entropy)
         print('loss',loss)
-
+```
+## 優化器與梯度裁剪
+* optimizer：使用 RMSProp 進行梯度下降。
+* clip_gradients=max_gradient_norm：防止梯度爆炸
+```
         # Define optimizer
         global_step = tf.Variable(0, trainable=False)
         learning_rate = tf.train.exponential_decay(learning_rate, global_step, 10000, 0.94)
