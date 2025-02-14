@@ -124,8 +124,13 @@ class FeudalAgent():
 ## 計算損失函數
 * 計算 管理者（manager）的損失函數
 
-** ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/1.png)
-** ![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/2.png)
+
+![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/1.png)
+
+
+![image](https://github.com/Yuu-Hsuan/feudal/blob/main/graph/2.png)
+
+
 ```
         # define loss
         # - manager loss
